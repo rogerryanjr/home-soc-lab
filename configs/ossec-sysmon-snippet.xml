@@ -1,0 +1,6 @@
+<!-- Added to C:\Program Files (x86)\ossec-agent\ossec.conf, just above </ossec_config> -->
+<!-- Tells the Wazuh agent to forward Sysmon's event log to the Wazuh server -->
+<localfile>
+  <location>Microsoft-Windows-Sysmon/Operational</location>
+  <log_format>eventchannel</log_format>
+</localfile>

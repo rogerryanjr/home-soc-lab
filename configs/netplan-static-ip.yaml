@@ -1,0 +1,13 @@
+# /etc/netplan/50-cloud-init.yaml on the Wazuh server
+# Gives the SIEM a fixed IP so agents never lose contact with it.
+network:
+  version: 2
+  ethernets:
+    enp0s1:
+      dhcp4: no
+      addresses: [10.0.0.136/24]
+      routes:
+        - to: default
+          via: 10.0.0.1
+      nameservers:
+        addresses: [1.1.1.1, 8.8.8.8]
