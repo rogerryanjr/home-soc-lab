@@ -11,7 +11,7 @@ A self-built Security Operations Center (SOC) lab running on one Apple Silicon M
 | VM | OS | Role | IP |
 |---|---|---|---|
 | `siemlog` | Ubuntu Server, ARM64, headless <!-- add version: run `lsb_release -a` --> | Wazuh SIEM (manager, indexer, dashboard) | 10.0.0.136 (static) |
-| `Wazuh-Win11-001` | Windows 11, ARM64 | Victim endpoint: Wazuh agent + Sysmon | 10.0.0.31 |
+| `Wazuh-Win11-001` | Windows 11 Pro, ARM64 | Victim endpoint: Wazuh agent + Sysmon | 10.0.0.31 |
 | Kali | Kali Linux, ARM64 | Attacker | 10.0.0.178 (DHCP) |
 
 - **Host:** Apple Silicon MacBook Air, 24 GB RAM, running UTM
@@ -47,6 +47,8 @@ A self-built Security Operations Center (SOC) lab running on one Apple Silicon M
 - Deployed the agent with the dashboard's **Deploy new agent** wizard (Windows MSI), ran the generated command in an admin PowerShell, and started the service with `NET START WazuhSvc`.
 - The agent `Wazuh-Win11-001` showed **Active**.
 
+![Wazuh agent Wazuh-Win11-001 showing Active](screenshots/agent-active.png)
+
 **Finding: CIS benchmark.** On enrollment, Wazuh's Security Configuration Assessment ran the **CIS Windows 11 Enterprise** policy: 482 checks. The default install scored **26%**.
 
 <!-- screenshots/sca-score.png -->
@@ -62,20 +64,33 @@ A self-built Security Operations Center (SOC) lab running on one Apple Silicon M
 
 **Finding: Wazuh doesn't see the scan.** Wazuh works from host logs, and Windows doesn't log a blocked scan, so no alerts appeared. Network-level detection needs a tool like Suricata.
 
-<!-- screenshots/nmap-filtered.png -->
+![nmap scan showing all ports filtered](screenshots/nmap-filtered.png)
 
 ### Step 5: Detection #1, failed RDP logins
 - Turned on Remote Desktop to expose a realistic attack surface.
 - The port still showed **filtered** and nothing was listening on 3389 (`netstat -an | findstr 3389` was empty), even though Settings showed RDP **On**. I checked the `fDenyTSConnections` registry value and rebooted, after which port 3389 was **listening**, and nmap from Kali showed `3389/tcp open`.
+
+  ![nmap showing RDP port 3389 open](screenshots/nmap-rdp-open.png)
+
 - From Kali, sent repeated RDP logins with a fake user and a wrong password:
   ```bash
   xfreerdp3 /v:10.0.0.31 /u:fakeuser /p:wrongpass /cert:ignore
   ```
 - In Wazuh Threat Hunting, searched `data.win.system.eventID:4625` (Windows failed logon).
-- **Result:** Wazuh alerted on each attempt with **"Logon failure – Unknown user or bad password"**. The alert details include the source IP (Kali) and the targeted username.
+- **Result:** Wazuh alerted on each attempt with **"Logon failure – Unknown user or bad password"**.
 - MITRE ATT&CK: T1110, Brute Force (attempted)
 
-<!-- screenshots/rdp-4625-alert.png -->
+**Evidence from the alert:**
+
+| Field | Value | Meaning |
+|---|---|---|
+| `ipAddress` | 10.0.0.178 | Source of the attempt: the Kali VM |
+| `workstationName` | kali | Attacker's hostname |
+| `targetUserName` | fakeuser | Account the attacker tried |
+| `logonType` | 3 | Network logon (RDP with Network Level Authentication checks credentials this way) |
+| `status` / `subStatus` | 0xC000006D / 0xC0000064 | Logon failed / **username does not exist** |
+
+![Wazuh 4625 alert details](screenshots/rdp-4625-alert.png)
 
 ### Step 6: Sysmon telemetry
 - Installed Sysmon with the [SwiftOnSecurity config](https://github.com/SwiftOnSecurity/sysmon-config). Windows on ARM needs the ARM64 build, `Sysmon64a.exe`:
@@ -94,7 +109,7 @@ A self-built Security Operations Center (SOC) lab running on one Apple Silicon M
   - **Rule 92031:** Discovery activity executed
   - **Rule 92033:** Discovery activity spawned via PowerShell
 
-<!-- screenshots/sysmon-discovery-alert.png -->
+![Wazuh Sysmon discovery alerts, rules 92031 and 92033](screenshots/sysmon-discovery-alert.png)
 
 ---
 
